@@ -89,6 +89,20 @@ class ConverterGUI(tk.Tk):
             except Exception as exc:  # noqa: BLE001 (log unexpected failures)
                 self._append_log(f"Unexpected error downloading repository: {exc}\n")
 
+        # If the repository exists but looks incomplete (no package.json), refresh it.
+        package_json = repo_dir / "package.json"
+        if not package_json.exists():
+            try:
+                self._append_log(
+                    "Converter package.json missing; re-downloading repository...\n"
+                )
+                download_and_extract_repo(repo_dir)
+                self._append_log("Redownload complete.\n")
+            except URLError as exc:
+                self._append_log(f"Failed to download repository: {exc}\n")
+            except Exception as exc:  # noqa: BLE001 (log unexpected failures)
+                self._append_log(f"Unexpected error downloading repository: {exc}\n")
+
         if not ensure_converter_dependencies(repo_dir, self._append_log):
             self.convert_button.configure(text="Converter unavailable", state="disabled")
             return
