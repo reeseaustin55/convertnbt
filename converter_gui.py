@@ -345,7 +345,8 @@ def resolve_converter_command(repo_dir: Path) -> list[str] | str | None:
     Preference order:
     1. Use the locally installed binary under node_modules/.bin.
     2. Use the package.json `bin` entry directly via `node`.
-    3. Fall back to the global/npx-installed `nbt-to-mcstructure` binary.
+    3. Fall back to `npm exec` with the global `nbt-to-mcstructure` package if
+       the local repo cannot be used.
     """
 
     local_bin = local_bin_path(repo_dir)
@@ -358,15 +359,26 @@ def resolve_converter_command(repo_dir: Path) -> list[str] | str | None:
     if package_bin is not None:
         return ["node", str(package_bin)]
 
-    # Fallback to npx if local repo parsing failed or package.json missing
-    return "npx --yes nbt-to-mcstructure --input \"{input}\" --output \"{output}\" --format mcfunction"
+    npm_cmd = resolve_npm_command()
+    if npm_cmd is None:
+        return None
+
+    # Prefer npm exec so we do not rely on npx being on PATH
+    return [npm_cmd, "exec", "--yes", "nbt-to-mcstructure"]
 
 
 def build_command(template: list[str] | str, input_path: str, output_path: str) -> list[str] | str:
     """Inject input/output paths into the converter command template."""
 
     if isinstance(template, list):
-        return template + ["--input", input_path, "--output", output_path, "--format", "mcfunction"]
+        return template + [
+            "--input",
+            input_path,
+            "--output",
+            output_path,
+            "--format",
+            "mcfunction",
+        ]
 
     return template.format(input=input_path, output=output_path)
 
