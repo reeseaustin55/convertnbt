@@ -1,6 +1,6 @@
 # NBT batch conversion GUI
 
-`converter_gui.py` provides a Tkinter interface for batch converting `.nbt` files to `.mcfunction` using the external [JaylyDev/nbt-to-mcstructure](https://github.com/JaylyDev/nbt-to-mcstructure) tool. On startup the GUI downloads the converter repository (if missing) so you only need to pick the folder that already contains your `.nbt` files; `.mcfunction` output is saved in the same folder.
+`converter_gui.py` provides a Tkinter interface for batch converting `.nbt` files to `.mcfunction` using the external [JaylyDev/nbt-to-mcstructure](https://github.com/JaylyDev/nbt-to-mcstructure) tool. On startup the GUI downloads the converter repository and installs its Node dependencies (if missing) so you only need to pick the folder that already contains your `.nbt` files; `.mcfunction` output is saved in the same folder.
 
 ## Prerequisites
 - Python 3.8+ with Tkinter available (usually included with standard distributions).
@@ -16,8 +16,9 @@
 
 ### How the converter is prepared
 - On startup the GUI downloads `JaylyDev/nbt-to-mcstructure` into a local `nbt-to-mcstructure` folder if it is not present.
-- The tool attempts to run the converter directly from the downloaded repo by reading its `bin` entry in `package.json`. If that cannot be determined, it falls back to `npx --yes nbt-to-mcstructure ...` and assumes the binary is reachable via Node/npm.
+- It then runs `npm install --production` inside that folder (when needed) so the local `node_modules/.bin/nbt-to-mcstructure` command can be executed directly—no `npx` dependency.
+- If a local binary cannot be located after install, the tool falls back to `npx --yes nbt-to-mcstructure ...` and assumes the binary is reachable via Node/npm.
 - Node.js and npm still need to be installed on your system; downloading the repo does not bundle Node itself.
 
 ### Windows notes
-- Because the converter is invoked directly (without a command template), you generally will not need to edit any paths. If the downloaded repository cannot be parsed, the GUI will fall back to `npx` which relies on Node/npm being on your PATH.
+- The GUI prefers the locally installed `node_modules/.bin/nbt-to-mcstructure.cmd` that `npm install` creates, so `npx` does not need to be available on PATH. If the local binary is missing, it falls back to `npx`, which still requires Node/npm on PATH.

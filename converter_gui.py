@@ -17,6 +17,7 @@ import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox, scrolledtext
 from pathlib import Path
+from typing import Callable
 from urllib.error import URLError
 from urllib.request import urlopen
 
@@ -88,10 +89,14 @@ class ConverterGUI(tk.Tk):
             except Exception as exc:  # noqa: BLE001 (log unexpected failures)
                 self._append_log(f"Unexpected error downloading repository: {exc}\n")
 
+        if not ensure_converter_dependencies(repo_dir, self._append_log):
+            self.convert_button.configure(text="Converter unavailable", state="disabled")
+            return
+
         self.converter_command = resolve_converter_command(repo_dir)
         if self.converter_command is None:
             self._append_log(
-                "Could not determine converter command. You may need Node.js/npm installed.\n"
+                "Could not determine converter command. Ensure Node.js/npm are installed.\n"
             )
             self.convert_button.configure(text="Converter unavailable", state="disabled")
             return
@@ -148,7 +153,7 @@ class ConverterGUI(tk.Tk):
                 else:
                     display_cmd = " ".join(shlex.quote(part) for part in command)
                     args = command
-                    shell = False
+                    shell = os.name == "nt" and command and command[0].lower().endswith(".cmd")
 
                 self._append_log(f"Running: {display_cmd}\n")
                 try:
@@ -210,26 +215,122 @@ def download_and_extract_repo(target_dir: Path) -> None:
         shutil.move(str(extracted_dirs[0]), target_dir)
 
 
+def ensure_converter_dependencies(repo_dir: Path, log: Callable[[str], None]) -> bool:
+    """Ensure the downloaded converter has its Node dependencies installed."""
+
+    package_json = repo_dir / "package.json"
+    if not package_json.exists():
+        log("Converter package.json was not found after download.\n")
+        return False
+
+    if has_local_binary(repo_dir):
+        return True
+
+    npm_cmd = resolve_npm_command()
+    if npm_cmd is None:
+        log("npm was not found on PATH. Please install Node.js/npm and restart the tool.\n")
+        return False
+
+    log("Installing converter dependencies (npm install)...\n")
+    result = subprocess.run(
+        [npm_cmd, "install", "--production"],
+        cwd=repo_dir,
+        capture_output=True,
+        text=True,
+    )
+    if result.stdout:
+        log(result.stdout)
+    if result.stderr:
+        log(result.stderr)
+
+    if result.returncode != 0:
+        log("npm install failed; see output above.\n")
+        return False
+
+    if not has_local_binary(repo_dir):
+        log("npm install completed but converter binary was not found.\n")
+        return False
+
+    return True
+
+
+def package_bin_path(repo_dir: Path) -> Path | None:
+    """Return the CLI path from package.json `bin` if available."""
+
+    package_json = repo_dir / "package.json"
+    if not package_json.exists():
+        return None
+
+    try:
+        data = json.loads(package_json.read_text())
+        bin_entry = data.get("bin")
+        if isinstance(bin_entry, str):
+            return repo_dir / bin_entry
+        if isinstance(bin_entry, dict):
+            first_bin = next(iter(bin_entry.values()))
+            return repo_dir / first_bin
+    except Exception:  # noqa: BLE001 (best-effort helper)
+        return None
+
+    return None
+
+
+def local_bin_path(repo_dir: Path) -> Path | None:
+    """Return the node_modules/.bin executable if present."""
+
+    bin_dir = repo_dir / "node_modules" / ".bin"
+    candidates = [
+        bin_dir / "nbt-to-mcstructure",
+        bin_dir / "nbt-to-mcstructure.cmd",
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def has_local_binary(repo_dir: Path) -> bool:
+    """Check whether a usable local binary exists."""
+
+    local_bin = local_bin_path(repo_dir)
+    if local_bin is not None:
+        return True
+
+    package_bin = package_bin_path(repo_dir)
+    return package_bin is not None and package_bin.exists()
+
+
+def resolve_npm_command() -> str | None:
+    """Locate npm on the current platform."""
+
+    if os.name == "nt":
+        for name in ("npm.cmd", "npm.exe", "npm"):
+            path = shutil.which(name)
+            if path:
+                return path
+        return None
+
+    return shutil.which("npm")
+
+
 def resolve_converter_command(repo_dir: Path) -> list[str] | str | None:
     """Determine the command used to run the converter.
 
     Preference order:
-    1. Use the locally downloaded repository by reading its package.json `bin` entry.
-    2. Fall back to the global/npx-installed `nbt-to-mcstructure` binary.
+    1. Use the locally installed binary under node_modules/.bin.
+    2. Use the package.json `bin` entry directly via `node`.
+    3. Fall back to the global/npx-installed `nbt-to-mcstructure` binary.
     """
 
-    package_json = repo_dir / "package.json"
-    if package_json.exists():
-        try:
-            data = json.loads(package_json.read_text())
-            bin_entry = data.get("bin")
-            if isinstance(bin_entry, str):
-                return ["node", str(repo_dir / bin_entry)]
-            if isinstance(bin_entry, dict):
-                first_bin = next(iter(bin_entry.values()))
-                return ["node", str(repo_dir / first_bin)]
-        except Exception:  # noqa: BLE001 (fallback handled below)
-            pass
+    local_bin = local_bin_path(repo_dir)
+    if local_bin is not None:
+        if os.name == "nt" and local_bin.suffix.lower() == ".cmd":
+            return [str(local_bin)]
+        return [str(local_bin)]
+
+    package_bin = package_bin_path(repo_dir)
+    if package_bin is not None:
+        return ["node", str(package_bin)]
 
     # Fallback to npx if local repo parsing failed or package.json missing
     return "npx --yes nbt-to-mcstructure --input \"{input}\" --output \"{output}\" --format mcfunction"
