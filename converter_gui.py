@@ -226,7 +226,19 @@ def download_and_extract_repo(target_dir: Path) -> None:
         if not extracted_dirs:
             raise RuntimeError("Downloaded archive did not contain any folders")
 
-        shutil.move(str(extracted_dirs[0]), target_dir)
+        # Prefer a directory that actually looks like the converter repo, i.e.
+        # contains package.json. Some archives include __MACOSX or other
+        # metadata folders that should not be moved over the real contents.
+        chosen_dir = None
+        for path in extracted_dirs:
+            if (path / "package.json").exists():
+                chosen_dir = path
+                break
+
+        if chosen_dir is None:
+            chosen_dir = extracted_dirs[0]
+
+        shutil.move(str(chosen_dir), target_dir)
 
 
 def ensure_converter_dependencies(repo_dir: Path, log: Callable[[str], None]) -> bool:
