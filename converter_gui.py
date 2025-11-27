@@ -393,45 +393,67 @@ def build_command(template: list[str] | str, input_path: str, output_path: str) 
     return template.format(input=input_path, output=output_path)
 
 
-def log_environment_diagnostics(repo_dir: Path, log: Callable[[str], None]) -> None:
-    """Log environment details to help diagnose converter setup failures."""
+def log_environment_diagnostics(
+    repo_dir: Path, log: Callable[[str], None], *, write_file: bool = True
+) -> None:
+    """Log environment details to help diagnose converter setup failures.
 
-    log("\n==== Environment diagnostics ===\n")
-    log(f"Platform: os.name={os.name}, sys.platform={sys.platform}\n")
-    log(f"Python version: {sys.version.split()[0]}\n")
-    log(f"Working directory: {Path.cwd()}\n")
-    log(f"Converter directory: {repo_dir} (exists: {repo_dir.exists()})\n")
+    When *write_file* is True, the diagnostics are also written to
+    ``converter_diagnostics.txt`` next to this script so they can be shared
+    without copy/paste loss.
+    """
+
+    buffer: list[str] = []
+
+    def log_and_capture(message: str) -> None:
+        buffer.append(message)
+        log(message)
+
+    log_and_capture("\n==== Environment diagnostics ===\n")
+    log_and_capture(f"Platform: os.name={os.name}, sys.platform={sys.platform}\n")
+    log_and_capture(f"Python version: {sys.version.split()[0]}\n")
+    log_and_capture(f"Working directory: {Path.cwd()}\n")
+    log_and_capture(
+        f"Converter directory: {repo_dir} (exists: {repo_dir.exists()})\n"
+    )
+
+    # Summarize prerequisite visibility first so users can spot the root cause quickly.
+    node_cmd = shutil.which("node") or shutil.which("node.exe") or shutil.which("node.cmd")
+    npm_cmd = resolve_npm_command()
+    log_and_capture(
+        "Prerequisite summary: node=%s, npm=%s\n"
+        % (node_cmd or "not found", npm_cmd or "not found")
+    )
 
     if repo_dir.exists():
         try:
             entries = sorted(
                 f"{p.name}/" if p.is_dir() else p.name for p in repo_dir.iterdir()
             )
-            log("Repo contents: %s\n" % (", ".join(entries) or "<empty>"))
+            log_and_capture("Repo contents: %s\n" % (", ".join(entries) or "<empty>"))
         except Exception as exc:  # noqa: BLE001 (best-effort diagnostics)
-            log(f"Repo listing failed: {exc}\n")
+            log_and_capture(f"Repo listing failed: {exc}\n")
 
         package_json = repo_dir / "package.json"
-        log(f"package.json present: {package_json.exists()}\n")
-        log(f"node_modules present: {(repo_dir / 'node_modules').exists()}\n")
-        log(f"Local binary: {local_bin_path(repo_dir) or 'not found'}\n")
+        log_and_capture(f"package.json present: {package_json.exists()}\n")
+        log_and_capture(f"node_modules present: {(repo_dir / 'node_modules').exists()}\n")
+        log_and_capture(f"Local binary: {local_bin_path(repo_dir) or 'not found'}\n")
     else:
-        log("Converter directory is missing entirely.\n")
+        log_and_capture("Converter directory is missing entirely.\n")
 
     path_entries = os.environ.get("PATH", "").split(os.pathsep)
-    log("PATH entries:\n")
+    log_and_capture("PATH entries:\n")
     for entry in path_entries:
-        log(f" - {entry or '<empty>'}\n")
+        log_and_capture(f" - {entry or '<empty>'}\n")
 
     for name in ("node", "node.exe", "node.cmd"):
-        log(f"which {name}: {shutil.which(name) or 'not found'}\n")
+        log_and_capture(f"which {name}: {shutil.which(name) or 'not found'}\n")
 
     for name in ("npm", "npm.cmd", "npm.exe"):
-        log(f"which {name}: {shutil.which(name) or 'not found'}\n")
+        log_and_capture(f"which {name}: {shutil.which(name) or 'not found'}\n")
 
-    npm_cmd = resolve_npm_command()
     if npm_cmd:
-        log(f"Using npm command: {npm_cmd}\n")
+        log_and_capture(f"Using npm command: {npm_cmd}\n")
         try:
             npm_version = subprocess.run(
                 [npm_cmd, "--version"],
@@ -440,15 +462,14 @@ def log_environment_diagnostics(repo_dir: Path, log: Callable[[str], None]) -> N
                 check=False,
             )
             if npm_version.stdout:
-                log(f"npm --version stdout: {npm_version.stdout}")
+                log_and_capture(f"npm --version stdout: {npm_version.stdout}")
             if npm_version.stderr:
-                log(f"npm --version stderr: {npm_version.stderr}")
+                log_and_capture(f"npm --version stderr: {npm_version.stderr}")
         except Exception as exc:  # noqa: BLE001 (best-effort diagnostics)
-            log(f"npm --version failed: {exc}\n")
+            log_and_capture(f"npm --version failed: {exc}\n")
 
-    node_cmd = shutil.which("node") or shutil.which("node.exe") or shutil.which("node.cmd")
     if node_cmd:
-        log(f"Using node command: {node_cmd}\n")
+        log_and_capture(f"Using node command: {node_cmd}\n")
         try:
             node_version = subprocess.run(
                 [node_cmd, "--version"],
@@ -457,13 +478,23 @@ def log_environment_diagnostics(repo_dir: Path, log: Callable[[str], None]) -> N
                 check=False,
             )
             if node_version.stdout:
-                log(f"node --version stdout: {node_version.stdout}")
+                log_and_capture(f"node --version stdout: {node_version.stdout}")
             if node_version.stderr:
-                log(f"node --version stderr: {node_version.stderr}")
+                log_and_capture(f"node --version stderr: {node_version.stderr}")
         except Exception as exc:  # noqa: BLE001 (best-effort diagnostics)
-            log(f"node --version failed: {exc}\n")
+            log_and_capture(f"node --version failed: {exc}\n")
 
-    log("===============================\n")
+    log_and_capture("===============================\n")
+
+    if write_file:
+        try:
+            diag_path = Path(__file__).resolve().parent / "converter_diagnostics.txt"
+            diag_path.write_text("".join(buffer))
+            log(
+                f"Saved diagnostics to {diag_path}. Share this file when reporting issues.\n"
+            )
+        except Exception as exc:  # noqa: BLE001 (best-effort diagnostics)
+            log(f"Could not write diagnostics file: {exc}\n")
 
 
 def main() -> None:

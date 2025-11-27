@@ -20,7 +20,7 @@
 - It then runs `npm install --production` inside that folder (when needed) so the local `node_modules/.bin/nbt-to-mcstructure` command can be executed directly.
 - If a local binary cannot be located after install, the tool falls back to `npm exec --yes nbt-to-mcstructure ...`, which uses your installed npm instead of relying on `npx` being on PATH.
 - Node.js and npm still need to be installed on your system; downloading the repo does not bundle Node itself.
-- When setup fails (for example, when npm is not on PATH), the GUI now emits a detailed diagnostic block showing the converter folder contents, PATH entries, detected `node`/`npm` binaries, and version checks. Share that block with the maintainer to pinpoint environment issues quickly.
+- When setup fails (for example, when npm is not on PATH), the GUI now emits a detailed diagnostic block showing the converter folder contents, PATH entries, detected `node`/`npm` binaries, and version checks. The same output is also written to `converter_diagnostics.txt` next to `converter_gui.py` so you can attach the file when reporting issues.
 
 ### Windows notes
 - The GUI prefers the locally installed `node_modules/.bin/nbt-to-mcstructure.cmd` that `npm install` creates. If that binary cannot be used, it falls back to `npm exec --yes nbt-to-mcstructure ...`, so only `npm` needs to be on PATH.
