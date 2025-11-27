@@ -12,6 +12,7 @@ import shlex
 import json
 import shutil
 import subprocess
+import sys
 import tempfile
 import threading
 import tkinter as tk
@@ -104,6 +105,7 @@ class ConverterGUI(tk.Tk):
                 self._append_log(f"Unexpected error downloading repository: {exc}\n")
 
         if not ensure_converter_dependencies(repo_dir, self._append_log):
+            log_environment_diagnostics(repo_dir, self._append_log)
             self.convert_button.configure(text="Converter unavailable", state="disabled")
             return
 
@@ -112,6 +114,7 @@ class ConverterGUI(tk.Tk):
             self._append_log(
                 "Could not determine converter command. Ensure Node.js/npm are installed.\n"
             )
+            log_environment_diagnostics(repo_dir, self._append_log)
             self.convert_button.configure(text="Converter unavailable", state="disabled")
             return
 
@@ -388,6 +391,79 @@ def build_command(template: list[str] | str, input_path: str, output_path: str) 
         ]
 
     return template.format(input=input_path, output=output_path)
+
+
+def log_environment_diagnostics(repo_dir: Path, log: Callable[[str], None]) -> None:
+    """Log environment details to help diagnose converter setup failures."""
+
+    log("\n==== Environment diagnostics ===\n")
+    log(f"Platform: os.name={os.name}, sys.platform={sys.platform}\n")
+    log(f"Python version: {sys.version.split()[0]}\n")
+    log(f"Working directory: {Path.cwd()}\n")
+    log(f"Converter directory: {repo_dir} (exists: {repo_dir.exists()})\n")
+
+    if repo_dir.exists():
+        try:
+            entries = sorted(
+                f"{p.name}/" if p.is_dir() else p.name for p in repo_dir.iterdir()
+            )
+            log("Repo contents: %s\n" % (", ".join(entries) or "<empty>"))
+        except Exception as exc:  # noqa: BLE001 (best-effort diagnostics)
+            log(f"Repo listing failed: {exc}\n")
+
+        package_json = repo_dir / "package.json"
+        log(f"package.json present: {package_json.exists()}\n")
+        log(f"node_modules present: {(repo_dir / 'node_modules').exists()}\n")
+        log(f"Local binary: {local_bin_path(repo_dir) or 'not found'}\n")
+    else:
+        log("Converter directory is missing entirely.\n")
+
+    path_entries = os.environ.get("PATH", "").split(os.pathsep)
+    log("PATH entries:\n")
+    for entry in path_entries:
+        log(f" - {entry or '<empty>'}\n")
+
+    for name in ("node", "node.exe", "node.cmd"):
+        log(f"which {name}: {shutil.which(name) or 'not found'}\n")
+
+    for name in ("npm", "npm.cmd", "npm.exe"):
+        log(f"which {name}: {shutil.which(name) or 'not found'}\n")
+
+    npm_cmd = resolve_npm_command()
+    if npm_cmd:
+        log(f"Using npm command: {npm_cmd}\n")
+        try:
+            npm_version = subprocess.run(
+                [npm_cmd, "--version"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if npm_version.stdout:
+                log(f"npm --version stdout: {npm_version.stdout}")
+            if npm_version.stderr:
+                log(f"npm --version stderr: {npm_version.stderr}")
+        except Exception as exc:  # noqa: BLE001 (best-effort diagnostics)
+            log(f"npm --version failed: {exc}\n")
+
+    node_cmd = shutil.which("node") or shutil.which("node.exe") or shutil.which("node.cmd")
+    if node_cmd:
+        log(f"Using node command: {node_cmd}\n")
+        try:
+            node_version = subprocess.run(
+                [node_cmd, "--version"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if node_version.stdout:
+                log(f"node --version stdout: {node_version.stdout}")
+            if node_version.stderr:
+                log(f"node --version stderr: {node_version.stderr}")
+        except Exception as exc:  # noqa: BLE001 (best-effort diagnostics)
+            log(f"node --version failed: {exc}\n")
+
+    log("===============================\n")
 
 
 def main() -> None:
