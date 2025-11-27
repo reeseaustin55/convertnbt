@@ -24,6 +24,10 @@ from urllib.error import URLError
 from urllib.request import urlopen
 
 
+# Directory where a portable Node.js distribution will be extracted on Windows
+EMBEDDED_NODE_DIR = Path(__file__).resolve().parent / "embedded_node"
+
+
 class ConverterGUI(tk.Tk):
     """Tkinter GUI for converting NBT files with minimal user input."""
 
@@ -568,5 +572,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-EMBEDDED_NODE_DIR = Path(__file__).resolve().parent / "embedded_node"
 
