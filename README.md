@@ -9,6 +9,8 @@ A small utility that converts NBT or SNBT data into a Minecraft `.mcfunction` fi
 
 ## Usage
 
+### Command line
+
 Run the converter from the repository root:
 
 ```bash
@@ -25,3 +27,19 @@ Key options:
 * `--announce` – append a `tellraw` line announcing success when the function runs.
 
 The generated file contains helpful comments and a single `data modify storage` command that injects the supplied NBT payload into the chosen storage location.
+
+### GUI
+
+A basic Tkinter GUI is available for batch converting every `.nbt` or `.snbt` file in a folder. Each converted file is written back to the same folder with the `.mcfunction` extension.
+
+Launch it with:
+
+```bash
+python -m convertnbt.gui
+```
+
+Steps:
+
+1. Click **Browse** and choose the folder containing your NBT/SNBT files.
+2. Adjust the **Storage ID**, **Target path**, or **tellraw** toggle if desired.
+3. Click **Convert** to write `.mcfunction` files alongside each source file. Progress is reported in the on-screen log and a summary dialog.
