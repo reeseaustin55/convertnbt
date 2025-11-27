@@ -146,27 +146,19 @@ def build_block_state(palette_entry) -> str:
     return f"{name}[{','.join(parts)}]"
 
 
-def build_setblock_lines(
-    root_tag,
-    source: Path | None = None,
-    announce: bool = False,
-    include_air: bool = False,
-) -> List[str]:
-    """Create a `.mcfunction` that places every block via `setblock`."""
+def _unwrap(value):
+    return value.value if hasattr(value, "value") else value
+
+
+def _build_block_records(root_tag, include_air: bool, offset: tuple[int, int, int]):
+    """Return normalized block records from a structure-like tag."""
 
     palette = [build_block_state(entry) for entry in root_tag.get("palette", [])]
     blocks = root_tag.get("blocks", [])
 
-    lines: List[str] = []
-    if source:
-        lines.append(f"# Generated from {source}")
-    lines.append("# Places the structure relative to the current executor position")
-
-    def unwrap(value):
-        return value.value if hasattr(value, "value") else value
-
+    normalized: list[tuple[int, int, int, str, str]] = []
     for block in blocks:
-        state_idx = int(unwrap(block.get("state", 0)))
+        state_idx = int(_unwrap(block.get("state", 0)))
         try:
             block_state = palette[state_idx]
         except IndexError:
@@ -180,7 +172,7 @@ def build_setblock_lines(
             continue
 
         try:
-            x, y, z = (int(unwrap(p)) for p in pos)
+            x, y, z = (int(_unwrap(p)) + delta for p, delta in zip(pos, offset))
         except Exception:
             continue
 
@@ -190,6 +182,28 @@ def build_setblock_lines(
             formatter = getattr(nbt, "snbt", None)
             nbt_suffix = formatter() if formatter else str(nbt)
 
+        normalized.append((x, y, z, block_state, nbt_suffix))
+
+    return normalized
+
+
+def build_setblock_lines(
+    root_tag,
+    source: Path | None = None,
+    announce: bool = False,
+    include_air: bool = False,
+    offset: tuple[int, int, int] = (0, 0, 0),
+) -> List[str]:
+    """Create a `.mcfunction` that places every block via `setblock`."""
+
+    records = _build_block_records(root_tag, include_air, offset)
+
+    lines: List[str] = []
+    if source:
+        lines.append(f"# Generated from {source}")
+    lines.append("# Places the structure relative to the current executor position")
+
+    for x, y, z, block_state, nbt_suffix in records:
         lines.append(
             f"setblock ~{x} ~{y} ~{z} {block_state}{nbt_suffix} replace"
         )
@@ -202,6 +216,72 @@ def build_setblock_lines(
     return lines
 
 
+def build_fill_lines(
+    root_tag,
+    source: Path | None = None,
+    announce: bool = False,
+    include_air: bool = False,
+    offset: tuple[int, int, int] = (0, 0, 0),
+) -> List[str]:
+    """Create `.mcfunction` contents using `fill` runs grouped by rows."""
+
+    records = _build_block_records(root_tag, include_air, offset)
+
+    by_state: dict[str, dict[tuple[int, int], list[int]]] = {}
+    singles: list[tuple[int, int, int, str, str]] = []
+
+    for x, y, z, state, nbt in records:
+        if nbt:
+            singles.append((x, y, z, state, nbt))
+            continue
+        row_key = (y, z)
+        rows = by_state.setdefault(state, {})
+        rows.setdefault(row_key, []).append(x)
+
+    lines: List[str] = []
+    if source:
+        lines.append(f"# Generated from {source}")
+    lines.append("# Places the structure relative to the current executor position")
+
+    # Emit grouped fills for rows of identical block state
+    for state, rows in by_state.items():
+        for (y, z), xs in rows.items():
+            for start, end in _compress_intervals(xs):
+                if start == end:
+                    lines.append(f"setblock ~{start} ~{y} ~{z} {state} replace")
+                else:
+                    lines.append(
+                        f"fill ~{start} ~{y} ~{z} ~{end} ~{y} ~{z} {state} replace"
+                    )
+
+    # Emit nbt-bearing blocks individually so their data stays intact
+    for x, y, z, state, nbt in singles:
+        lines.append(f"setblock ~{x} ~{y} ~{z} {state}{nbt} replace")
+
+    if announce:
+        lines.append(
+            'tellraw @s {"text":"Structure placement completed","color":"green"}'
+        )
+
+    return lines
+
+
+def _compress_intervals(values: list[int]) -> list[tuple[int, int]]:
+    """Turn a list of integers into contiguous intervals."""
+
+    if not values:
+        return []
+
+    intervals: list[tuple[int, int]] = []
+    for x in sorted(values):
+        if not intervals or x > intervals[-1][1] + 1:
+            intervals.append((x, x))
+        else:
+            start, end = intervals[-1]
+            intervals[-1] = (start, x)
+    return intervals
+
+
 def convert_file(
     input_path: Path,
     output_path: Path,
@@ -211,6 +291,8 @@ def convert_file(
     chunk: bool | None = None,
     mode: str = "storage",
     include_air: bool = False,
+    center: bool = False,
+    use_fill: bool = False,
 ) -> Iterable[str]:
     """Convert an input NBT/SNBT file into `.mcfunction` contents.
 
@@ -227,7 +309,25 @@ def convert_file(
     lines: List[str]
     if mode == "place":
         tag = parse_snbt_tag(snbt)
-        lines = build_setblock_lines(tag, input_path, announce, include_air)
+        offset = (0, 0, 0)
+        if center:
+            size = getattr(tag, "get", lambda _x, default=None: default)("size") or []
+            try:
+                ox = -int(_unwrap(size[0]) // 2)
+                oy = 0
+                oz = -int(_unwrap(size[2]) // 2)
+                offset = (ox, oy, oz)
+            except Exception:
+                offset = (0, 0, 0)
+
+        if use_fill:
+            lines = build_fill_lines(
+                tag, input_path, announce, include_air, offset
+            )
+        else:
+            lines = build_setblock_lines(
+                tag, input_path, announce, include_air, offset
+            )
     elif chunk or (chunk is None and len(snbt) > 30000):
         tag = parse_snbt_tag(snbt)
         lines = build_chunked_lines(tag, storage, target_path, input_path, announce)
@@ -293,6 +393,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="When using placement mode, also emit commands for air blocks.",
     )
+    parser.add_argument(
+        "--center",
+        action="store_true",
+        help="Offset placement so the structure is centered around the executor (x/z).",
+    )
+    parser.add_argument(
+        "--fill",
+        action="store_true",
+        help="Group identical rows into fill commands instead of per-block setblock lines.",
+    )
 
     return parser.parse_args(argv)
 
@@ -308,6 +418,8 @@ def main(argv: list[str] | None = None) -> None:
         args.chunk,
         args.mode,
         args.include_air,
+        args.center,
+        args.fill,
     )
 
 

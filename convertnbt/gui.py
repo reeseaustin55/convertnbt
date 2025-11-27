@@ -36,6 +36,8 @@ class ConverterGUI:
         self.chunk_var = tk.BooleanVar(value=True)
         self.mode_var = tk.StringVar(value="storage")
         self.include_air_var = tk.BooleanVar(value=False)
+        self.center_var = tk.BooleanVar(value=False)
+        self.fill_var = tk.BooleanVar(value=False)
 
         self._build_layout()
 
@@ -93,6 +95,22 @@ class ConverterGUI:
             variable=self.include_air_var,
         ).pack(side="left")
 
+        center_row = ttk.Frame(options_frame)
+        center_row.pack(fill="x", **padding)
+        ttk.Checkbutton(
+            center_row,
+            text="Center structure around executor (x/z)",
+            variable=self.center_var,
+        ).pack(side="left")
+
+        fill_row = ttk.Frame(options_frame)
+        fill_row.pack(fill="x", **padding)
+        ttk.Checkbutton(
+            fill_row,
+            text="Use fill commands to group rows when placing",
+            variable=self.fill_var,
+        ).pack(side="left")
+
         action_frame = ttk.Frame(self.root)
         action_frame.pack(fill="x", padx=12, pady=(0, 8))
         ttk.Button(action_frame, text="Convert", command=self.convert_folder).pack(side="right")
@@ -136,6 +154,8 @@ class ConverterGUI:
         chunk = self.chunk_var.get()
         mode = self.mode_var.get()
         include_air = self.include_air_var.get()
+        center = self.center_var.get()
+        use_fill = self.fill_var.get()
 
         successes = 0
         failures: list[str] = []
@@ -152,6 +172,8 @@ class ConverterGUI:
                     chunk,
                     mode,
                     include_air,
+                    center,
+                    use_fill,
                 )
             except Exception as exc:  # pragma: no cover - GUI feedback
                 failures.append(f"{file_path.name}: {exc}")
