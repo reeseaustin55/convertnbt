@@ -295,8 +295,10 @@ def ensure_converter_dependencies(repo_dir: Path, log: Callable[[str], None]) ->
         return False
 
     if not has_local_binary(repo_dir):
-        log("npm install completed but converter binary was not found.\n")
-        return False
+        log(
+            "npm install completed but converter binary was not found; will fall back to"
+            " npm exec at runtime.\n"
+        )
 
     return True
 
@@ -409,8 +411,17 @@ def resolve_converter_command(repo_dir: Path) -> list[str] | str | None:
     if npm_cmd is None:
         return None
 
-    # Prefer npm exec so we do not rely on npx being on PATH
-    return [npm_cmd, "exec", "--yes", "nbt-to-mcstructure"]
+    # Final fallback: run the published package via npm exec within the
+    # repository prefix so the installed dependencies (or the registry package)
+    # can provide the CLI, even when no local binary was detected.
+    return [
+        npm_cmd,
+        "--prefix",
+        str(repo_dir),
+        "exec",
+        "--yes",
+        "nbt-to-mcstructure",
+    ]
 
 
 def build_command(template: list[str] | str, input_path: str, output_path: str) -> list[str] | str:
