@@ -130,14 +130,17 @@ def build_chunked_lines(
 def build_block_state(palette_entry) -> str:
     """Turn a palette entry into a blockstate string."""
 
-    name = palette_entry["Name"].value if hasattr(palette_entry["Name"], "value") else palette_entry["Name"]
+    def unwrap(value):
+        return value.value if hasattr(value, "value") else value
+
+    name = unwrap(palette_entry["Name"])
     props = palette_entry.get("Properties")
     if not props:
         return name
 
     parts: list[str] = []
     for key, value in props.items():
-        raw = value.value if hasattr(value, "value") else value
+        raw = unwrap(value)
         parts.append(f"{key}={raw}")
 
     return f"{name}[{','.join(parts)}]"
@@ -159,8 +162,11 @@ def build_setblock_lines(
         lines.append(f"# Generated from {source}")
     lines.append("# Places the structure relative to the current executor position")
 
+    def unwrap(value):
+        return value.value if hasattr(value, "value") else value
+
     for block in blocks:
-        state_idx = int(block.get("state", 0))
+        state_idx = int(unwrap(block.get("state", 0)))
         try:
             block_state = palette[state_idx]
         except IndexError:
@@ -173,11 +179,19 @@ def build_setblock_lines(
         if len(pos) != 3:
             continue
 
+        try:
+            x, y, z = (int(unwrap(p)) for p in pos)
+        except Exception:
+            continue
+
         nbt = block.get("nbt")
-        nbt_suffix = nbt.snbt() if nbt is not None else ""
+        nbt_suffix = ""
+        if nbt is not None:
+            formatter = getattr(nbt, "snbt", None)
+            nbt_suffix = formatter() if formatter else str(nbt)
 
         lines.append(
-            f"setblock ~{pos[0]} ~{pos[1]} ~{pos[2]} {block_state}{nbt_suffix} replace"
+            f"setblock ~{x} ~{y} ~{z} {block_state}{nbt_suffix} replace"
         )
 
     if announce:
