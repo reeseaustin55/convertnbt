@@ -329,6 +329,7 @@ def local_bin_path(repo_dir: Path) -> Path | None:
     candidates = [
         bin_dir / "nbt-to-mcstructure",
         bin_dir / "nbt-to-mcstructure.cmd",
+        bin_dir / "nbt-to-mcstructure.ps1",
     ]
     for candidate in candidates:
         if candidate.exists():
@@ -364,6 +365,23 @@ def resolve_npm_command() -> str | None:
     return shutil.which("npm")
 
 
+def resolve_node_command() -> str | None:
+    """Locate node on the current platform, preferring the embedded runtime."""
+
+    embedded_node = embedded_node_path()
+    if embedded_node and embedded_node.exists():
+        return str(embedded_node)
+
+    if os.name == "nt":
+        for name in ("node.exe", "node.cmd", "node"):
+            path = shutil.which(name)
+            if path:
+                return path
+        return None
+
+    return shutil.which("node")
+
+
 def resolve_converter_command(repo_dir: Path) -> list[str] | str | None:
     """Determine the command used to run the converter.
 
@@ -382,7 +400,10 @@ def resolve_converter_command(repo_dir: Path) -> list[str] | str | None:
 
     package_bin = package_bin_path(repo_dir)
     if package_bin is not None:
-        return ["node", str(package_bin)]
+        node_cmd = resolve_node_command()
+        if node_cmd is None:
+            return None
+        return [node_cmd, str(package_bin)]
 
     npm_cmd = resolve_npm_command()
     if npm_cmd is None:
@@ -433,7 +454,7 @@ def log_environment_diagnostics(
     )
 
     # Summarize prerequisite visibility first so users can spot the root cause quickly.
-    node_cmd = shutil.which("node") or shutil.which("node.exe") or shutil.which("node.cmd")
+    node_cmd = resolve_node_command()
     npm_cmd = resolve_npm_command()
     log_and_capture(
         "Prerequisite summary: node=%s, npm=%s\n"
@@ -463,6 +484,8 @@ def log_environment_diagnostics(
     for entry in path_entries:
         log_and_capture(f" - {entry or '<empty>'}\n")
 
+    node_cmd = resolve_node_command()
+    log_and_capture(f"Resolved node command: {node_cmd or 'not found'}\n")
     for name in ("node", "node.exe", "node.cmd"):
         log_and_capture(f"which {name}: {shutil.which(name) or 'not found'}\n")
 
@@ -562,6 +585,22 @@ def embedded_npm_path() -> Path | None:
     for npm_candidate in EMBEDDED_NODE_DIR.rglob("npm"):
         if npm_candidate.is_file():
             return npm_candidate
+    return None
+
+
+def embedded_node_path() -> Path | None:
+    """Return the node.exe/node binary path within the embedded Node folder."""
+
+    if not EMBEDDED_NODE_DIR.exists():
+        return None
+
+    for node_candidate in EMBEDDED_NODE_DIR.rglob("node.exe"):
+        return node_candidate
+    for node_candidate in EMBEDDED_NODE_DIR.rglob("node.cmd"):
+        return node_candidate
+    for node_candidate in EMBEDDED_NODE_DIR.rglob("node"):
+        if node_candidate.is_file():
+            return node_candidate
     return None
 
 
