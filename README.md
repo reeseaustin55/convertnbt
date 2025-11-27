@@ -1,6 +1,6 @@
 # convertNBT
 
-A small utility that converts NBT or SNBT data into a Minecraft `.mcfunction` file that loads the payload into a storage container with a single `data modify storage` command.
+A small utility that converts NBT or SNBT data into a Minecraft `.mcfunction` file. You can either load the payload into a storage container with `data modify storage` or directly place every block with `setblock` commands.
 
 ## Requirements
 
@@ -15,7 +15,7 @@ Run the converter from the repository root:
 
 ```bash
 python -m convertnbt.cli --input path/to/input.nbt --output load.mcfunction \
-  --storage example:store --target data [--chunk]
+  --storage example:store --target data [--chunk] [--mode place] [--include-air]
 ```
 
 Key options:
@@ -28,6 +28,10 @@ Key options:
 * `--chunk` – emit many smaller `data modify ... append` commands instead of a
   single massive `set value` line (recommended for large structures that exceed
   command length limits).
+* `--mode` – choose `storage` (default) to write into a storage entry or `place`
+  to emit one `setblock` command per block in the structure.
+* `--include-air` – when using placement mode, also emit commands for air blocks
+  instead of skipping them.
 
 The generated file contains helpful comments and a single `data modify storage` command that injects the supplied NBT payload into the chosen storage location.
 
@@ -44,6 +48,6 @@ python -m convertnbt.gui
 Steps:
 
 1. Click **Browse** and choose the folder containing your NBT/SNBT files.
-2. Adjust the **Storage ID**, **Target path**, or **tellraw** toggle if desired.
-3. Leave **Split into many commands** enabled for large structures to avoid oversized lines.
+2. Choose **Storage** mode to write into data storage or **Place blocks** to emit `setblock` commands (optionally include air blocks).
+3. Adjust the **Storage ID**, **Target path**, **tellraw**, or chunking toggles as needed.
 4. Click **Convert** to write `.mcfunction` files alongside each source file. Progress is reported in the on-screen log and a summary dialog.

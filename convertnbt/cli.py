@@ -127,6 +127,67 @@ def build_chunked_lines(
     return lines
 
 
+def build_block_state(palette_entry) -> str:
+    """Turn a palette entry into a blockstate string."""
+
+    name = palette_entry["Name"].value if hasattr(palette_entry["Name"], "value") else palette_entry["Name"]
+    props = palette_entry.get("Properties")
+    if not props:
+        return name
+
+    parts: list[str] = []
+    for key, value in props.items():
+        raw = value.value if hasattr(value, "value") else value
+        parts.append(f"{key}={raw}")
+
+    return f"{name}[{','.join(parts)}]"
+
+
+def build_setblock_lines(
+    root_tag,
+    source: Path | None = None,
+    announce: bool = False,
+    include_air: bool = False,
+) -> List[str]:
+    """Create a `.mcfunction` that places every block via `setblock`."""
+
+    palette = [build_block_state(entry) for entry in root_tag.get("palette", [])]
+    blocks = root_tag.get("blocks", [])
+
+    lines: List[str] = []
+    if source:
+        lines.append(f"# Generated from {source}")
+    lines.append("# Places the structure relative to the current executor position")
+
+    for block in blocks:
+        state_idx = int(block.get("state", 0))
+        try:
+            block_state = palette[state_idx]
+        except IndexError:
+            continue
+
+        if not include_air and block_state == "minecraft:air":
+            continue
+
+        pos = block.get("pos", [])
+        if len(pos) != 3:
+            continue
+
+        nbt = block.get("nbt")
+        nbt_suffix = nbt.snbt() if nbt is not None else ""
+
+        lines.append(
+            f"setblock ~{pos[0]} ~{pos[1]} ~{pos[2]} {block_state}{nbt_suffix} replace"
+        )
+
+    if announce:
+        lines.append(
+            'tellraw @s {"text":"Structure placement completed","color":"green"}'
+        )
+
+    return lines
+
+
 def convert_file(
     input_path: Path,
     output_path: Path,
@@ -134,6 +195,8 @@ def convert_file(
     target_path: str = "data",
     announce: bool = False,
     chunk: bool | None = None,
+    mode: str = "storage",
+    include_air: bool = False,
 ) -> Iterable[str]:
     """Convert an input NBT/SNBT file into `.mcfunction` contents.
 
@@ -148,7 +211,10 @@ def convert_file(
     snbt = read_snbt(input_path)
 
     lines: List[str]
-    if chunk or (chunk is None and len(snbt) > 30000):
+    if mode == "place":
+        tag = parse_snbt_tag(snbt)
+        lines = build_setblock_lines(tag, input_path, announce, include_air)
+    elif chunk or (chunk is None and len(snbt) > 30000):
         tag = parse_snbt_tag(snbt)
         lines = build_chunked_lines(tag, storage, target_path, input_path, announce)
     else:
@@ -162,8 +228,8 @@ def convert_file(
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Convert an NBT or SNBT file into a `.mcfunction` that loads the data "
-            "into a storage entry."
+            "Convert an NBT or SNBT file into a `.mcfunction` that either loads the "
+            "data into a storage entry or places each block with setblock commands."
         )
     )
     parser.add_argument(
@@ -202,6 +268,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "massive line (useful for large structures)."
         ),
     )
+    parser.add_argument(
+        "--mode",
+        choices=["storage", "place"],
+        default="storage",
+        help="Choose `storage` to write into data storage or `place` to emit setblock commands.",
+    )
+    parser.add_argument(
+        "--include-air",
+        action="store_true",
+        help="When using placement mode, also emit commands for air blocks.",
+    )
 
     return parser.parse_args(argv)
 
@@ -215,6 +292,8 @@ def main(argv: list[str] | None = None) -> None:
         args.target,
         args.announce,
         args.chunk,
+        args.mode,
+        args.include_air,
     )
 
 

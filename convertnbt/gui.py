@@ -34,6 +34,8 @@ class ConverterGUI:
         self.target_var = tk.StringVar(value="data")
         self.announce_var = tk.BooleanVar(value=False)
         self.chunk_var = tk.BooleanVar(value=True)
+        self.mode_var = tk.StringVar(value="storage")
+        self.include_air_var = tk.BooleanVar(value=False)
 
         self._build_layout()
 
@@ -65,6 +67,12 @@ class ConverterGUI:
         ttk.Label(target_row, text="Target path:").pack(side="left")
         ttk.Entry(target_row, textvariable=self.target_var).pack(side="left", fill="x", expand=True, padx=(12, 0))
 
+        mode_row = ttk.Frame(options_frame)
+        mode_row.pack(fill="x", **padding)
+        ttk.Label(mode_row, text="Mode:").pack(side="left")
+        ttk.Radiobutton(mode_row, text="Storage", value="storage", variable=self.mode_var).pack(side="left", padx=(6, 12))
+        ttk.Radiobutton(mode_row, text="Place blocks", value="place", variable=self.mode_var).pack(side="left")
+
         announce_row = ttk.Frame(options_frame)
         announce_row.pack(fill="x", **padding)
         ttk.Checkbutton(announce_row, text="Append tellraw announcement", variable=self.announce_var).pack(side="left")
@@ -75,6 +83,14 @@ class ConverterGUI:
             chunk_row,
             text="Split into many commands (safer for large structures)",
             variable=self.chunk_var,
+        ).pack(side="left")
+
+        air_row = ttk.Frame(options_frame)
+        air_row.pack(fill="x", **padding)
+        ttk.Checkbutton(
+            air_row,
+            text="Include air blocks when placing",
+            variable=self.include_air_var,
         ).pack(side="left")
 
         action_frame = ttk.Frame(self.root)
@@ -118,6 +134,8 @@ class ConverterGUI:
         target = self.target_var.get().strip() or "data"
         announce = self.announce_var.get()
         chunk = self.chunk_var.get()
+        mode = self.mode_var.get()
+        include_air = self.include_air_var.get()
 
         successes = 0
         failures: list[str] = []
@@ -125,7 +143,16 @@ class ConverterGUI:
         for file_path in files:
             output_path = file_path.with_suffix(".mcfunction")
             try:
-                convert_file(file_path, output_path, storage, target, announce, chunk)
+                convert_file(
+                    file_path,
+                    output_path,
+                    storage,
+                    target,
+                    announce,
+                    chunk,
+                    mode,
+                    include_air,
+                )
             except Exception as exc:  # pragma: no cover - GUI feedback
                 failures.append(f"{file_path.name}: {exc}")
                 self.append_log(f"❌ Failed {file_path.name}: {exc}")
