@@ -222,23 +222,26 @@ def download_and_extract_repo(target_dir: Path) -> None:
             shutil.copyfileobj(response, handle)
 
         shutil.unpack_archive(str(zip_path), tmp)
+
         extracted_dirs = [p for p in Path(tmp).iterdir() if p.is_dir()]
         if not extracted_dirs:
             raise RuntimeError("Downloaded archive did not contain any folders")
 
-        # Prefer a directory that actually looks like the converter repo, i.e.
-        # contains package.json. Some archives include __MACOSX or other
-        # metadata folders that should not be moved over the real contents.
+        # Prefer the directory that actually contains package.json anywhere
+        # inside it (not only direct children) because some GitHub archives can
+        # nest the repository inside another folder, and macOS adds metadata
+        # directories like __MACOSX.
+        candidate_dirs = [p.parent for p in Path(tmp).rglob("package.json")]
         chosen_dir = None
-        for path in extracted_dirs:
-            if (path / "package.json").exists():
+        for path in candidate_dirs:
+            if path.is_dir():
                 chosen_dir = path
                 break
 
         if chosen_dir is None:
             chosen_dir = extracted_dirs[0]
 
-        shutil.move(str(chosen_dir), target_dir)
+        shutil.copytree(chosen_dir, target_dir, dirs_exist_ok=True)
 
 
 def ensure_converter_dependencies(repo_dir: Path, log: Callable[[str], None]) -> bool:
@@ -246,7 +249,11 @@ def ensure_converter_dependencies(repo_dir: Path, log: Callable[[str], None]) ->
 
     package_json = repo_dir / "package.json"
     if not package_json.exists():
-        log("Converter package.json was not found after download.\n")
+        contents = ", ".join(p.name for p in repo_dir.iterdir()) if repo_dir.exists() else ""
+        log(
+            "Converter package.json was not found after download. "
+            "Folder contents: %s\n" % (contents or "<empty>")
+        )
         return False
 
     if has_local_binary(repo_dir):

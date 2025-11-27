@@ -16,7 +16,7 @@
 
 ### How the converter is prepared
 - On startup the GUI downloads `JaylyDev/nbt-to-mcstructure` into a local `nbt-to-mcstructure` folder if it is not present.
-- If the local folder is incomplete (for example, missing `package.json`), it is automatically re-downloaded before continuing, skipping archive metadata folders so the real package files are restored.
+- If the local folder is incomplete (for example, missing `package.json`), it is automatically re-downloaded before continuing. Extraction looks for the folder that actually contains `package.json` (even if nested) and skips archive metadata directories so the real package files are restored.
 - It then runs `npm install --production` inside that folder (when needed) so the local `node_modules/.bin/nbt-to-mcstructure` command can be executed directly.
 - If a local binary cannot be located after install, the tool falls back to `npm exec --yes nbt-to-mcstructure ...`, which uses your installed npm instead of relying on `npx` being on PATH.
 - Node.js and npm still need to be installed on your system; downloading the repo does not bundle Node itself.
