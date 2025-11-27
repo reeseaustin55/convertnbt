@@ -56,3 +56,16 @@ Steps:
 2. Choose **Storage** mode to write into data storage or **Place blocks** to emit placement commands (optionally include air blocks, centering, and fill grouping).
 3. Adjust the **Storage ID**, **Target path**, **tellraw**, or chunking toggles as needed.
 4. Click **Convert** to write `.mcfunction` files alongside each source file. Progress is reported in the on-screen log and a summary dialog.
+
+#### Option reference (GUI)
+
+* **Storage ID** – Namespaced ID for the storage container to write into when using storage mode. Defaults to `convertnbt:data`.
+* **Target path** – NBT path inside the storage to receive the structure payload. Defaults to `data`.
+* **Mode** –
+  * **Storage** writes the structure NBT into the configured storage/target using `data modify storage ... set value` (or chunked append commands when enabled).
+  * **Place blocks** emits `setblock`/`fill` commands that directly place the structure around the executor instead of storing NBT.
+* **Append tellraw announcement** – Adds a `tellraw` message at the end of the generated function so you see a success notification in chat after running it.
+* **Split into many commands (safer for large structures)** – When enabled in storage mode, breaks the payload into multiple append commands instead of a single very long command to avoid command-length limits. This has no effect in placement mode.
+* **Include air blocks when placing** – Placement mode only. If checked, air is written too (matching the original structure); if unchecked, air is skipped so the existing world blocks remain unless overwritten by non-air blocks.
+* **Center structure around executor (x/z)** – Placement mode only. Offsets coordinates so the structure is centered on the player/command block that runs the function, instead of placing it strictly relative to one corner.
+* **Use fill commands to group rows when placing** – Placement mode only. Collapses contiguous rows of identical blocks into `fill` commands to reduce file size and improve execution speed. Leave unchecked to emit one `setblock` per block.
