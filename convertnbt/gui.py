@@ -7,11 +7,17 @@ selected folder.
 
 from __future__ import annotations
 
+import os
+import sys
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
-from .cli import convert_file
+if __package__ in {None, ""}:
+    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from convertnbt.cli import convert_file
+else:
+    from .cli import convert_file
 
 
 class ConverterGUI:
