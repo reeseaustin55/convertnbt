@@ -33,6 +33,7 @@ class ConverterGUI:
         self.storage_var = tk.StringVar(value="convertnbt:data")
         self.target_var = tk.StringVar(value="data")
         self.announce_var = tk.BooleanVar(value=False)
+        self.chunk_var = tk.BooleanVar(value=True)
 
         self._build_layout()
 
@@ -67,6 +68,14 @@ class ConverterGUI:
         announce_row = ttk.Frame(options_frame)
         announce_row.pack(fill="x", **padding)
         ttk.Checkbutton(announce_row, text="Append tellraw announcement", variable=self.announce_var).pack(side="left")
+
+        chunk_row = ttk.Frame(options_frame)
+        chunk_row.pack(fill="x", **padding)
+        ttk.Checkbutton(
+            chunk_row,
+            text="Split into many commands (safer for large structures)",
+            variable=self.chunk_var,
+        ).pack(side="left")
 
         action_frame = ttk.Frame(self.root)
         action_frame.pack(fill="x", padx=12, pady=(0, 8))
@@ -108,6 +117,7 @@ class ConverterGUI:
         storage = self.storage_var.get().strip() or "convertnbt:data"
         target = self.target_var.get().strip() or "data"
         announce = self.announce_var.get()
+        chunk = self.chunk_var.get()
 
         successes = 0
         failures: list[str] = []
@@ -115,7 +125,7 @@ class ConverterGUI:
         for file_path in files:
             output_path = file_path.with_suffix(".mcfunction")
             try:
-                convert_file(file_path, output_path, storage, target, announce)
+                convert_file(file_path, output_path, storage, target, announce, chunk)
             except Exception as exc:  # pragma: no cover - GUI feedback
                 failures.append(f"{file_path.name}: {exc}")
                 self.append_log(f"❌ Failed {file_path.name}: {exc}")

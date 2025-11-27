@@ -15,7 +15,7 @@ Run the converter from the repository root:
 
 ```bash
 python -m convertnbt.cli --input path/to/input.nbt --output load.mcfunction \
-  --storage example:store --target data
+  --storage example:store --target data [--chunk]
 ```
 
 Key options:
@@ -25,6 +25,9 @@ Key options:
 * `--storage` – storage ID to write into (defaults to `convertnbt:data`).
 * `--target` – NBT path inside the storage (defaults to `data`).
 * `--announce` – append a `tellraw` line announcing success when the function runs.
+* `--chunk` – emit many smaller `data modify ... append` commands instead of a
+  single massive `set value` line (recommended for large structures that exceed
+  command length limits).
 
 The generated file contains helpful comments and a single `data modify storage` command that injects the supplied NBT payload into the chosen storage location.
 
@@ -42,4 +45,5 @@ Steps:
 
 1. Click **Browse** and choose the folder containing your NBT/SNBT files.
 2. Adjust the **Storage ID**, **Target path**, or **tellraw** toggle if desired.
-3. Click **Convert** to write `.mcfunction` files alongside each source file. Progress is reported in the on-screen log and a summary dialog.
+3. Leave **Split into many commands** enabled for large structures to avoid oversized lines.
+4. Click **Convert** to write `.mcfunction` files alongside each source file. Progress is reported in the on-screen log and a summary dialog.
