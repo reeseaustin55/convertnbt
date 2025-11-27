@@ -125,14 +125,37 @@ class ConverterGUI(tk.Tk):
         self.convert_thread.start()
 
     def _convert_files(self, nbt_files: list[str], output: str, cmd_template: str) -> None:
-        for path in nbt_files:
-            try:
-                dest = os.path.join(output, os.path.splitext(os.path.basename(path))[0])
-                cmd = cmd_template.format(input=path, output=dest)
+        shell = os.name == "nt"
+        try:
+            for path in nbt_files:
+                try:
+                    dest = os.path.join(
+                        output, os.path.splitext(os.path.basename(path))[0]
+                    )
+                    cmd = cmd_template.format(input=path, output=dest)
+                except KeyError as exc:
+                    self._append_log(
+                        f"Command template is missing placeholder {{{exc.args[0]}}}.\n"
+                    )
+                    break
+
                 self._append_log(f"Running: {cmd}\n")
-                result = subprocess.run(
-                    shlex.split(cmd), capture_output=True, text=True, check=False
-                )
+                try:
+                    args = cmd if shell else shlex.split(cmd, posix=os.name != "nt")
+                    result = subprocess.run(
+                        args, shell=shell, capture_output=True, text=True, check=False
+                    )
+                except FileNotFoundError:
+                    missing = cmd.split()[0]
+                    hint = "Use npm i -g nbt-to-mcstructure or adjust the command template."
+                    self._append_log(
+                        f"Error converting {path}: command '{missing}' was not found. {hint}\n"
+                    )
+                    break
+                except Exception as exc:  # noqa: BLE001 (log and continue)
+                    self._append_log(f"Error converting {path}: {exc}\n")
+                    continue
+
                 if result.stdout:
                     self._append_log(result.stdout)
                 if result.stderr:
@@ -143,11 +166,9 @@ class ConverterGUI(tk.Tk):
                     )
                 else:
                     self._append_log(f"✔ Converted {path}\n")
-            except Exception as exc:  # noqa: BLE001 (log and continue)
-                self._append_log(f"Error converting {path}: {exc}\n")
-
-        self._append_log("\nFinished.\n")
-        self.convert_button.configure(state="normal")
+        finally:
+            self._append_log("\nFinished.\n")
+            self.convert_button.configure(state="normal")
 
     def _append_log(self, message: str) -> None:
         self.log_widget.configure(state="normal")
