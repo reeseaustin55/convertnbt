@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import zipfile
 import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox, scrolledtext
@@ -263,6 +264,12 @@ def ensure_converter_dependencies(repo_dir: Path, log: Callable[[str], None]) ->
         return True
 
     npm_cmd = resolve_npm_command()
+    if npm_cmd is None and os.name == "nt":
+        log(
+            "npm was not found on PATH. Attempting to download an embedded Node.js runtime...\n"
+        )
+        npm_cmd = ensure_embedded_node(log)
+
     if npm_cmd is None:
         log("npm was not found on PATH. Please install Node.js/npm and restart the tool.\n")
         return False
@@ -338,6 +345,10 @@ def has_local_binary(repo_dir: Path) -> bool:
 
 def resolve_npm_command() -> str | None:
     """Locate npm on the current platform."""
+
+    embedded_npm = embedded_npm_path()
+    if embedded_npm and embedded_npm.exists():
+        return str(embedded_npm)
 
     if os.name == "nt":
         for name in ("npm.cmd", "npm.exe", "npm"):
@@ -424,6 +435,8 @@ def log_environment_diagnostics(
         "Prerequisite summary: node=%s, npm=%s\n"
         % (node_cmd or "not found", npm_cmd or "not found")
     )
+    if EMBEDDED_NODE_DIR.exists():
+        log_and_capture(f"Embedded Node directory: {EMBEDDED_NODE_DIR}\n")
 
     if repo_dir.exists():
         try:
@@ -497,6 +510,57 @@ def log_environment_diagnostics(
             log(f"Could not write diagnostics file: {exc}\n")
 
 
+def ensure_embedded_node(log: Callable[[str], None]) -> str | None:
+    """Download a portable Node.js+npm bundle on Windows when npm is missing."""
+
+    if os.name != "nt":
+        return None
+
+    npm_path = embedded_npm_path()
+    if npm_path and npm_path.exists():
+        return str(npm_path)
+
+    url = "https://nodejs.org/dist/v18.20.4/node-v18.20.4-win-x64.zip"
+    try:
+        EMBEDDED_NODE_DIR.mkdir(parents=True, exist_ok=True)
+        log("Downloading embedded Node.js (v18.20.4)...\n")
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".zip") as tmp:
+            tmp_path = Path(tmp.name)
+            with urlopen(url) as response, open(tmp_path, "wb") as handle:
+                shutil.copyfileobj(response, handle)
+
+        with zipfile.ZipFile(tmp_path) as zip_ref:
+            zip_ref.extractall(EMBEDDED_NODE_DIR)
+        tmp_path.unlink(missing_ok=True)
+    except Exception as exc:  # noqa: BLE001 (best-effort helper)
+        log(f"Failed to download embedded Node.js: {exc}\n")
+        return None
+
+    npm_path = embedded_npm_path()
+    if npm_path and npm_path.exists():
+        log(f"Embedded Node.js ready at {EMBEDDED_NODE_DIR}.\n")
+        return str(npm_path)
+
+    log("Embedded Node.js download completed but npm was not found.\n")
+    return None
+
+
+def embedded_npm_path() -> Path | None:
+    """Return the npm.cmd path within the embedded Node folder, if any."""
+
+    if not EMBEDDED_NODE_DIR.exists():
+        return None
+
+    for npm_candidate in EMBEDDED_NODE_DIR.rglob("npm.cmd"):
+        return npm_candidate
+    for npm_candidate in EMBEDDED_NODE_DIR.rglob("npm.exe"):
+        return npm_candidate
+    for npm_candidate in EMBEDDED_NODE_DIR.rglob("npm"):
+        if npm_candidate.is_file():
+            return npm_candidate
+    return None
+
+
 def main() -> None:
     app = ConverterGUI()
     app.mainloop()
@@ -504,3 +568,5 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+EMBEDDED_NODE_DIR = Path(__file__).resolve().parent / "embedded_node"
+
