@@ -38,6 +38,8 @@ class ConverterGUI:
         self.include_air_var = tk.BooleanVar(value=False)
         self.center_var = tk.BooleanVar(value=False)
         self.fill_var = tk.BooleanVar(value=False)
+        self.extension_var = tk.StringVar(value="mcfunction")
+        self.merge_var = tk.BooleanVar(value=False)
 
         self._build_layout()
 
@@ -87,6 +89,22 @@ class ConverterGUI:
             variable=self.chunk_var,
         ).pack(side="left")
 
+        extension_row = ttk.Frame(options_frame)
+        extension_row.pack(fill="x", **padding)
+        ttk.Label(extension_row, text="Save as:").pack(side="left")
+        ttk.Radiobutton(
+            extension_row,
+            text=".mcfunction",
+            value="mcfunction",
+            variable=self.extension_var,
+        ).pack(side="left", padx=(6, 12))
+        ttk.Radiobutton(
+            extension_row,
+            text=".txt",
+            value="txt",
+            variable=self.extension_var,
+        ).pack(side="left")
+
         air_row = ttk.Frame(options_frame)
         air_row.pack(fill="x", **padding)
         ttk.Checkbutton(
@@ -109,6 +127,14 @@ class ConverterGUI:
             fill_row,
             text="Use fill commands to group rows when placing",
             variable=self.fill_var,
+        ).pack(side="left")
+
+        merge_row = ttk.Frame(options_frame)
+        merge_row.pack(fill="x", **padding)
+        ttk.Checkbutton(
+            merge_row,
+            text="Merge all outputs into combined .txt with separators",
+            variable=self.merge_var,
         ).pack(side="left")
 
         action_frame = ttk.Frame(self.root)
@@ -156,14 +182,19 @@ class ConverterGUI:
         include_air = self.include_air_var.get()
         center = self.center_var.get()
         use_fill = self.fill_var.get()
+        extension = self.extension_var.get()
+        merge_all = self.merge_var.get()
 
         successes = 0
         failures: list[str] = []
 
+        merged_payloads: list[list[str]] = []
+
         for file_path in files:
-            output_path = file_path.with_suffix(".mcfunction")
+            suffix = ".txt" if extension == "txt" else ".mcfunction"
+            output_path = file_path.with_suffix(suffix)
             try:
-                convert_file(
+                lines = convert_file(
                     file_path,
                     output_path,
                     storage,
@@ -181,6 +212,19 @@ class ConverterGUI:
             else:
                 successes += 1
                 self.append_log(f"✅ Wrote {output_path.name}")
+                merged_payloads.append(list(lines))
+
+        if merge_all and merged_payloads:
+            merged_path = folder_path / "combined_structures.txt"
+            separator = ["", "NEXT STRUCTURE", ""]
+            merged_lines: list[str] = []
+            for idx, payload in enumerate(merged_payloads):
+                if idx:
+                    merged_lines.extend(separator)
+                merged_lines.extend(payload)
+
+            merged_path.write_text("\n".join(merged_lines) + "\n", encoding="utf-8")
+            self.append_log(f"📝 Merged outputs into {merged_path.name}")
 
         summary_lines = [f"Converted {successes} file(s)"]
         if failures:
